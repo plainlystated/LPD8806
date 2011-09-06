@@ -6,6 +6,94 @@
 
 /*****************************************************************************/
 
+Pixel::Pixel() {
+  stepsRemaining = 0;
+  id = 0;
+
+  setColor(0, 0, 0);
+}
+
+bool Pixel::transitioning() {
+  if (stepsRemaining == 0) {
+    return false;
+  } else {
+    return true;
+  }
+}
+
+Pixel::Pixel(Pixel *p) {
+  red = p->red;
+  green = p->green;
+  blue = p->blue;
+  
+  id = p->id;
+
+  stepsRemaining = p->stepsRemaining;
+
+  transitionRed = p->transitionRed;
+  transitionGreen = p->transitionGreen;
+  transitionBlue = p->transitionBlue;
+
+  transitionRedStep = p->transitionRedStep;
+  transitionGreenStep = p->transitionGreenStep;
+  transitionBlueStep = p->transitionBlueStep;
+}
+
+void Pixel::transition() {
+  if (stepsRemaining == 0) return;
+  stepsRemaining = stepsRemaining - 1;
+
+  red = transitionRed + (transitionRedStep * stepsRemaining);
+  green = transitionGreen + (transitionGreenStep * stepsRemaining);
+  blue = transitionBlue + (transitionBlueStep * stepsRemaining);
+}
+
+void Pixel::transitionTo(uint8_t steps, byte r, byte g, byte b) {
+  stepsRemaining = steps;
+
+  transitionRed = r;
+  transitionGreen = g;
+  transitionBlue = b;
+
+  transitionRedStep = (float) (red - transitionRed) / stepsRemaining;
+  transitionGreenStep = (float) (green - transitionGreen) / stepsRemaining;
+  transitionBlueStep = (float) (blue - transitionBlue) / stepsRemaining;
+}
+
+void Pixel::transitionTo(uint8_t steps, Color color) {
+  //transitionTo(steps, color.red, color.green, color.blue);
+  transitionTo(steps, random(20), random(20), random(20));
+}
+
+Color Pixel::color() {
+  return Color(red, green, blue);
+}
+
+void Pixel::setColor(Color *c) {
+  green = c->green;
+  red = c->red;
+  blue = c->blue;
+}
+
+void Pixel::setColor(byte r, byte g, byte b) {
+  red = r;
+  green = g;
+  blue = b;
+}
+
+void Pixel::copy(Pixel *p) {
+  setColor(p->red, p->green, p->blue);
+
+  stepsRemaining = p->stepsRemaining;
+
+  transitionRed = p->transitionRed;
+  transitionGreen = p->transitionGreen;
+  transitionBlue = p->transitionBlue;
+
+  transitionRedStep = p->transitionRedStep;
+  transitionGreenStep = p->transitionGreenStep;
+  transitionBlueStep = p->transitionBlueStep;
+}
 
 LPD8806::LPD8806(uint16_t n, uint8_t dpin, uint8_t cpin) {
   dataPin = dpin;
@@ -13,10 +101,7 @@ LPD8806::LPD8806(uint16_t n, uint8_t dpin, uint8_t cpin) {
   numLEDs = n;
 
   // malloc 3 bytes per pixel so we dont have to hardcode the length
-  pixels = (uint8_t *)malloc(numLEDs * 3); // 3 bytes per pixel
-  for (uint16_t i=0; i < numLEDs; i++) {
-    setPixelColor(i, 0, 0, 0);
-  }
+  pixel_data = (uint8_t *)malloc(numLEDs * 3); // 3 bytes per pixel
 }
 
 void LPD8806::begin(void) {
@@ -26,22 +111,6 @@ void LPD8806::begin(void) {
 
 uint16_t LPD8806::numPixels(void) {
   return numLEDs;
-}
-
-uint32_t LPD8806::Color(byte r, byte g, byte b)
-{
-  //Take the lowest 7 bits of each value and append them end to end
-  // We have the top bit set high (its a 'parity-like' bit in the protocol
-  // and must be set!)
-
-  uint32_t x;
-  x = g | 0x80;
-  x <<= 8;
-  x |= r | 0x80;
-  x <<= 8;
-  x |= b | 0x80;
-
-  return(x);
 }
 
 // Basic, push SPI data out
@@ -72,9 +141,10 @@ void LPD8806::show(void) {
 
   // write 24 bits per pixel
   for (i=0; i<numLEDs; i++ ) {
-    write8(pixels[i*3]); 
-    write8(pixels[i*3+1]); 
-    write8(pixels[i*3+2]);     
+    pixels[i].transition();
+    write8(pixels[i].green | 0x80);
+    write8(pixels[i].red | 0x80);
+    write8(pixels[i].blue | 0x80);
   }
   
   // to 'latch' the data, we send just zeros
@@ -91,20 +161,27 @@ void LPD8806::show(void) {
 
 // store the rgb component in our array
 void LPD8806::setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b) {
-  uint32_t data;
-
   if (n > numLEDs) return;
 
-  pixels[n*3] = g | 0x80;
-  pixels[n*3+1] = r | 0x80;
-  pixels[n*3+2] = b | 0x80;
+  pixels[n].green = g | 0x80;
+  pixels[n].red = r | 0x80;
+  pixels[n].blue = b | 0x80;
 }
 
-void LPD8806::setPixelColor(uint16_t n, uint32_t c) {
-  if (n > numLEDs) return;
-
-  pixels[n*3] = (c >> 16) | 0x80;
-  pixels[n*3+1] = (c >> 8) | 0x80;
-  pixels[n*3+2] = c | 0x80;
+uint16_t LPD8806::index(uint16_t i) {
+  return i % numPixels();
 }
 
+Color::Color(byte r, byte g, byte b) {
+  red = r;
+  blue = b;
+  green = g;
+}
+
+Color::Color() {
+  byte red, green, blue;
+  red = random(1, 21);
+  green = random(21 - red);
+  blue = 20 - red - green;
+  Color(red, green, blue);
+}
